@@ -9,7 +9,36 @@ import (
 	"regexp"
 	"os/exec"
 	"golang.org/x/tools/go/vcs"
+	"encoding/json"
 )
+
+type Package struct {
+	GoPackagePath string
+	URL           string
+	Rev           string
+	Sha256        string
+}
+
+const packageFmt = `{
+  goPackagePath = "%s";
+  fetch = {
+    type = "git";
+    url = "%s";
+    rev = "%s";
+    sha256 = "%s";
+  };
+}`
+
+func (pkg Package) String() string {
+	return fmt.Sprintf(packageFmt, pkg.GoPackagePath, pkg.URL, pkg.Rev, pkg.Sha256)
+}
+
+type Prefetch struct {
+	URL string
+	Rev string
+	Sha256 string
+}
+
 
 func main() {
 	// No options at the moment
@@ -41,6 +70,8 @@ func main() {
 	if err := cmd.Start(); err != nil {
 		panic(err)
 	}
+
+	var packages []Package
 	for scanner.Scan() {
 		components := strings.Split(scanner.Text(), " ")
 		standard := components[1] == "true"
@@ -67,8 +98,21 @@ func main() {
 			rev = match[1]
 		}
 
-		fmt.Println(repoRoot.Repo, rev)
+		prefetchOut, err := exec.Command("nix-prefetch-git", "--quiet", repoRoot.Repo, "--rev", rev).Output()
+		if (err != nil) {
+			panic(err)
+		}
+
+		var prefetch Prefetch
+		json.Unmarshal([]byte(prefetchOut), &prefetch)
+		packages = append(packages, Package {
+			GoPackagePath: packagePath,
+			URL: prefetch.URL,
+			Sha256: prefetch.Sha256,
+			Rev: prefetch.Rev,
+		})
 	}
+
 	if err := cmd.Wait(); err != nil {
 		switch err := err.(type) {
 		case *exec.ExitError:
@@ -76,4 +120,10 @@ func main() {
 		}
 		panic(err)
 	}
+
+	fmt.Print("[")
+	for _, pkg := range packages {
+		fmt.Print(pkg)
+	}
+	fmt.Println("]")
 }
