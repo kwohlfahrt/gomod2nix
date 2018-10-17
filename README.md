@@ -1,5 +1,7 @@
 # gomod2nix
 
+[![Build Status](https://travis-ci.org/kwohlfahrt/gomod2nix.svg?branch=master)](https://travis-ci.org/kwohlfahrt/gomod2nix)
+
 A tool to create a `.nix` file with locked dependencies from a go project with a
 `go.mod`. Very similar to `vgo2nix`.
 
