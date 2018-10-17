@@ -29,8 +29,6 @@ const packageFmt = `{
   };
 }`
 
-const depFmt = "{{ .ImportPath }} {{ .Standard }} {{ .DepOnly }} {{ if .Module }}{{ .Module.Path }} {{ .Module.Version }}{{ end }}"
-
 func (pkg Package) String() string {
 	return fmt.Sprintf(packageFmt, pkg.GoPackagePath, pkg.URL, pkg.Rev, pkg.Sha256)
 }
@@ -39,6 +37,86 @@ type Prefetch struct {
 	URL string
 	Rev string
 	Sha256 string
+}
+
+type Dependency struct {
+	Path string
+	Version string
+}
+
+func DepsForPath(path string) []Dependency {
+	const depFmt = "{{ .ImportPath }} {{ .Standard }} {{ .DepOnly }} {{ if .Module }}{{ .Module.Path }} {{ .Module.Version }}{{ end }}"
+
+	cmd := exec.Command("go", "list", "-deps", "-f", depFmt, path)
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		panic(err)
+	}
+
+	if err := cmd.Start(); err != nil {
+		panic(err)
+	}
+
+	scanner := bufio.NewScanner(stdout)
+	var deps []Dependency
+	for scanner.Scan() {
+		components := strings.Split(scanner.Text(), " ")
+		importPath, standard, depOnly := components[0], components[1] == "true", components[2] == "true"
+		if standard || !depOnly {
+			continue
+		}
+
+		if len(components) < 5 {
+			panic(fmt.Sprintf("%s is neither a module nor in the standard library", importPath))
+		}
+
+		packagePath, version := components[3], components[4]
+		deps = append(deps, Dependency {
+			Path: packagePath,
+			Version: version,
+		})
+	}
+
+	if err := cmd.Wait(); err != nil {
+		switch err := err.(type) {
+		case *exec.ExitError:
+			fmt.Fprintln(os.Stderr, err.Stderr)
+		}
+		panic(err)
+	}
+
+	return deps
+}
+
+var pseudoVersionRegex = regexp.MustCompile("v[0-9.]+.-[0-9]+-([0-9a-f]+)")
+
+func PrefetchDependency(dep Dependency) Package {
+
+	repoRoot, err := vcs.RepoRootForImportPath(dep.Path, false)
+	if err != nil {
+		panic(err)
+	}
+
+	rev := dep.Version
+	match := pseudoVersionRegex.FindStringSubmatch(rev)
+	if len(match) > 0 {
+		rev = match[1]
+	}
+
+	prefetchOut, err := exec.Command("nix-prefetch-git", "--quiet", repoRoot.Repo, "--rev", rev).Output()
+	if (err != nil) {
+		panic(err)
+	}
+
+	var prefetch Prefetch
+	json.Unmarshal([]byte(prefetchOut), &prefetch)
+
+	return Package {
+		GoPackagePath: dep.Path,
+		URL: prefetch.URL,
+		Sha256: prefetch.Sha256,
+		Rev: prefetch.Rev,
+	}
 }
 
 
@@ -60,68 +138,10 @@ func main() {
 		os.Exit(1)
 	}
 
-	pseudoVersionRegex := regexp.MustCompile("v[0-9.]+.-[0-9]+-([0-9a-f]+)")
-
-	cmd := exec.Command("go", "list", "-deps", "-f", depFmt, path)
-	stdout, err := cmd.StdoutPipe()
-	if (err != nil) {
-		panic(err)
-	}
-	scanner := bufio.NewScanner(stdout)
-
-	if err := cmd.Start(); err != nil {
-		panic(err)
-	}
-
-	var packages []Package
-	for scanner.Scan() {
-		components := strings.Split(scanner.Text(), " ")
-		importPath, standard, depOnly := components[0], components[1] == "true", components[2] == "true"
-		if standard || !depOnly {
-			continue
-		} else if len(components) < 5 {
-			fmt.Fprintln(os.Stderr, importPath, "is neither a module nor in the standard library")
-			os.Exit(1)
-		}
-
-		packagePath, version := components[3], components[4]
-		repoRoot, err := vcs.RepoRootForImportPath(packagePath, false)
-		if err != nil {
-			panic(err)
-		}
-
-		match := pseudoVersionRegex.FindStringSubmatch(version)
-		rev := version
-		if len(match) > 0 {
-			rev = match[1]
-		}
-
-		prefetchOut, err := exec.Command("nix-prefetch-git", "--quiet", repoRoot.Repo, "--rev", rev).Output()
-		if (err != nil) {
-			panic(err)
-		}
-
-		var prefetch Prefetch
-		json.Unmarshal([]byte(prefetchOut), &prefetch)
-		packages = append(packages, Package {
-			GoPackagePath: packagePath,
-			URL: prefetch.URL,
-			Sha256: prefetch.Sha256,
-			Rev: prefetch.Rev,
-		})
-	}
-
-	if err := cmd.Wait(); err != nil {
-		switch err := err.(type) {
-		case *exec.ExitError:
-			fmt.Println(err.Stderr)
-		}
-		panic(err)
-	}
 
 	fmt.Print("[")
-	for _, pkg := range packages {
-		fmt.Print(pkg)
+	for _, dep := range DepsForPath(path) {
+		fmt.Print(PrefetchDependency(dep))
 	}
 	fmt.Println("]")
 }
