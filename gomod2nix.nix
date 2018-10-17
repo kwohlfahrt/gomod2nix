@@ -14,6 +14,9 @@ buildGoPackage rec {
       --prefix PATH : ${stdenv.lib.makeBinPath [ nix-prefetch-git go ]}
   '';
 
+  # All tests currently require network connectivity
+  doCheck = false;
+
   # Need to run `go list`
   allowGoReference = true;
 }
