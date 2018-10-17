@@ -29,6 +29,8 @@ const packageFmt = `{
   };
 }`
 
+const depFmt = "{{ .ImportPath }} {{ .Standard }} {{ .DepOnly }} {{ if .Module }}{{ .Module.Path }} {{ .Module.Version }}{{ end }}"
+
 func (pkg Package) String() string {
 	return fmt.Sprintf(packageFmt, pkg.GoPackagePath, pkg.URL, pkg.Rev, pkg.Sha256)
 }
@@ -60,7 +62,7 @@ func main() {
 
 	pseudoVersionRegex := regexp.MustCompile("v[0-9.]+.-[0-9]+-([0-9a-f]+)")
 
-	cmd := exec.Command("go", "list", "-deps", "-f", "{{.ImportPath}} {{.Standard}} {{ if .Module }}{{ .Module.Version }}{{ end }}", path)
+	cmd := exec.Command("go", "list", "-deps", "-f", depFmt, path)
 	stdout, err := cmd.StdoutPipe()
 	if (err != nil) {
 		panic(err)
@@ -74,22 +76,18 @@ func main() {
 	var packages []Package
 	for scanner.Scan() {
 		components := strings.Split(scanner.Text(), " ")
-		standard := components[1] == "true"
-		if standard {
+		importPath, standard, depOnly := components[0], components[1] == "true", components[2] == "true"
+		if standard || !depOnly {
 			continue
+		} else if len(components) < 5 {
+			fmt.Fprintln(os.Stderr, importPath, "is neither a module nor in the standard library")
+			os.Exit(1)
 		}
 
-		packagePath := components[0]
-
+		packagePath, version := components[3], components[4]
 		repoRoot, err := vcs.RepoRootForImportPath(packagePath, false)
 		if err != nil {
 			panic(err)
-		}
-
-		version := components[2]
-		if version == "" {
-			// Not in a module
-			continue
 		}
 
 		match := pseudoVersionRegex.FindStringSubmatch(version)
