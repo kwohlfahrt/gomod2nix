@@ -1,15 +1,15 @@
 package main
 
 import (
-	"fmt"
-	"flag"
 	"bufio"
-	"os"
-	"strings"
-	"regexp"
-	"os/exec"
-	"golang.org/x/tools/go/vcs"
 	"encoding/json"
+	"flag"
+	"fmt"
+	"golang.org/x/tools/go/vcs"
+	"os"
+	"os/exec"
+	"regexp"
+	"strings"
 	"sync"
 )
 
@@ -35,13 +35,13 @@ func (pkg Package) String() string {
 }
 
 type Prefetch struct {
-	URL string
-	Rev string
+	URL    string
+	Rev    string
 	Sha256 string
 }
 
 type Dependency struct {
-	Path string
+	Path    string
 	Version string
 }
 
@@ -72,8 +72,8 @@ func DepsForPath(path string) []Dependency {
 		}
 
 		packagePath, version := components[3], components[4]
-		deps = append(deps, Dependency {
-			Path: packagePath,
+		deps = append(deps, Dependency{
+			Path:    packagePath,
 			Version: version,
 		})
 	}
@@ -92,7 +92,6 @@ func DepsForPath(path string) []Dependency {
 var pseudoVersionRegex = regexp.MustCompile("v[0-9.]+.-[0-9]+-([0-9a-f]+)")
 
 func PrefetchDependency(dep Dependency) Package {
-
 	repoRoot, err := vcs.RepoRootForImportPath(dep.Path, false)
 	if err != nil {
 		panic(err)
@@ -105,21 +104,20 @@ func PrefetchDependency(dep Dependency) Package {
 	}
 
 	prefetchOut, err := exec.Command("nix-prefetch-git", "--quiet", repoRoot.Repo, "--rev", rev).Output()
-	if (err != nil) {
+	if err != nil {
 		panic(err)
 	}
 
 	var prefetch Prefetch
 	json.Unmarshal([]byte(prefetchOut), &prefetch)
 
-	return Package {
+	return Package{
 		GoPackagePath: dep.Path,
-		URL: prefetch.URL,
-		Sha256: prefetch.Sha256,
-		Rev: prefetch.Rev,
+		URL:           prefetch.URL,
+		Sha256:        prefetch.Sha256,
+		Rev:           prefetch.Rev,
 	}
 }
-
 
 func main() {
 	// No options at the moment
@@ -144,13 +142,13 @@ func main() {
 
 	wg := sync.WaitGroup{}
 	wg.Add(len(deps))
-	go func () {
+	go func() {
 		wg.Wait()
 		close(queue)
 	}()
 
 	for _, dep := range deps {
-		go func (dep Dependency) {
+		go func(dep Dependency) {
 			defer wg.Done()
 			queue <- PrefetchDependency(dep)
 		}(dep)

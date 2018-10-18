@@ -8,7 +8,7 @@ func TestDepsForPath(t *testing.T) {
 	}
 
 	expected := []Dependency{{
-		Path: "golang.org/x/tools",
+		Path:    "golang.org/x/tools",
 		Version: "v0.0.0-20181004163742-59602fdee893",
 	}}
 	// Must run from repo, should be OK for Travis
