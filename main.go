@@ -45,7 +45,11 @@ type Dependency struct {
 	Version string
 }
 
-func DepsForPath(path string) []Dependency {
+func (dep Dependency) String() string {
+	return fmt.Sprintf("%s %s", dep.Path, dep.Version)
+}
+
+func DepsForPath(path string) map[Dependency]struct{} {
 	const depFmt = "{{ .ImportPath }} {{ .Standard }} {{ .DepOnly }} {{ if .Module }}{{ .Module.Path }} {{ .Module.Version }}{{ end }}"
 
 	cmd := exec.Command("go", "list", "-deps", "-f", depFmt, path)
@@ -59,7 +63,7 @@ func DepsForPath(path string) []Dependency {
 	}
 
 	scanner := bufio.NewScanner(stdout)
-	var deps []Dependency
+	deps := make(map[Dependency]struct{})
 	for scanner.Scan() {
 		components := strings.Split(scanner.Text(), " ")
 		importPath, standard, depOnly := components[0], components[1] == "true", components[2] == "true"
@@ -72,10 +76,10 @@ func DepsForPath(path string) []Dependency {
 		}
 
 		packagePath, version := components[3], components[4]
-		deps = append(deps, Dependency{
+		deps[Dependency{
 			Path:    packagePath,
 			Version: version,
-		})
+		}] = struct{}{}
 	}
 
 	if err := cmd.Wait(); err != nil {
@@ -147,7 +151,7 @@ func main() {
 		close(queue)
 	}()
 
-	for _, dep := range deps {
+	for dep, _ := range deps {
 		go func(dep Dependency) {
 			defer wg.Done()
 			queue <- PrefetchDependency(dep)

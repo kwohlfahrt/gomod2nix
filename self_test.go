@@ -7,10 +7,10 @@ func TestDepsForPath(t *testing.T) {
 		t.Skip("Skipping integration test in short mode")
 	}
 
-	expected := []Dependency{{
+	expected := map[Dependency]struct{}{{
 		Path:    "golang.org/x/tools",
 		Version: "v0.0.0-20181004163742-59602fdee893",
-	}}
+	}: struct{}{}}
 	// Must run from repo, should be OK for Travis
 	deps := DepsForPath(".")
 
@@ -18,8 +18,8 @@ func TestDepsForPath(t *testing.T) {
 		t.Fail()
 	}
 
-	for i := 0; i < len(deps); i++ {
-		if deps[i] != expected[i] {
+	for dep, _ := range deps {
+		if _, ok := deps[dep]; !ok {
 			t.Fail()
 		}
 	}
