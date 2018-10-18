@@ -89,9 +89,8 @@ func DepsForPath(path string) map[Dependency]struct{} {
 	if err := cmd.Wait(); err != nil {
 		switch err := err.(type) {
 		case *exec.ExitError:
-			fmt.Fprintln(os.Stderr, err.Stderr)
+			panic(err.Stderr)
 		}
-		panic(err)
 	}
 
 	return deps
