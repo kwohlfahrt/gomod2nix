@@ -76,6 +76,10 @@ func DepsForPath(path string) map[Dependency]struct{} {
 		}
 
 		packagePath, version := components[3], components[4]
+		if version == "" {
+			// A package in the current directory
+			continue
+		}
 		deps[Dependency{
 			Path:    packagePath,
 			Version: version,
