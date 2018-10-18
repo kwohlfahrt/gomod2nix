@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"golang.org/x/tools/go/vcs"
 	"encoding/json"
+	"sync"
 )
 
 type Package struct {
@@ -138,10 +139,26 @@ func main() {
 		os.Exit(1)
 	}
 
+	deps := DepsForPath(path)
+	queue := make(chan Package)
+
+	wg := sync.WaitGroup{}
+	wg.Add(len(deps))
+	go func () {
+		wg.Wait()
+		close(queue)
+	}()
+
+	for _, dep := range deps {
+		go func (dep Dependency) {
+			defer wg.Done()
+			queue <- PrefetchDependency(dep)
+		}(dep)
+	}
 
 	fmt.Print("[")
-	for _, dep := range DepsForPath(path) {
-		fmt.Print(PrefetchDependency(dep))
+	for dep := range queue {
+		fmt.Print(dep)
 	}
 	fmt.Println("]")
 }
